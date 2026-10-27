@@ -11,8 +11,48 @@ const moveButtons = document.querySelectorAll(".move-btn");
 
 const LABELS = { rock: "ROCK", paper: "PAPER", scissors: "SCISSORS" };
 
+const SESSION_KEY = "rock-paper-scissors-v1";
+
 let score = { wins: 0, losses: 0, ties: 0 };
 let busy = false;
+let lastRound = null;
+
+function getSessionPayload() {
+  return { score, lastRound };
+}
+
+function persistState() {
+  AppSession.save(SESSION_KEY, getSessionPayload());
+}
+
+function applyLastRound(round) {
+  if (!round) {
+    clearArena();
+    versusLine.textContent = "Choose your move";
+    return;
+  }
+  versusLine.textContent = "Choose your move";
+  computerReveal.hidden = false;
+  computerReveal.textContent = round.computer_label;
+  resultMessage.hidden = false;
+  resultMessage.textContent = round.message;
+  resultMessage.className = "result-text";
+  resultMessage.classList.add(
+    round.outcome === "win" ? "is-win" : round.outcome === "lose" ? "is-lose" : "is-tie",
+  );
+}
+
+function restoreState() {
+  const saved = AppSession.load(SESSION_KEY);
+  if (!saved?.score) return false;
+  score = saved.score;
+  lastRound = saved.lastRound || null;
+  renderScore();
+  applyLastRound(lastRound);
+  return true;
+}
+
+AppSession.wireHelpSave(SESSION_KEY, getSessionPayload);
 
 function setError(message) {
   errorEl.hidden = !message;
@@ -96,7 +136,13 @@ async function playMove(move) {
     losses: payload.losses,
     ties: payload.ties,
   };
+  lastRound = {
+    computer_label: payload.computer_label,
+    message: payload.message,
+    outcome: payload.outcome,
+  };
   renderScore();
+  persistState();
 
   await sleep(400);
   versusLine.textContent = "Choose your move";
@@ -115,13 +161,16 @@ resetBtn.addEventListener("click", async () => {
   try {
     const res = await fetch("/api/reset", { method: "POST" });
     const data = await res.json();
+    AppSession.clear(SESSION_KEY);
     score = data;
+    lastRound = null;
     renderScore();
     versusLine.textContent = "Choose your move";
     clearArena();
+    persistState();
   } catch {
     setError("Could not reset score.");
   }
 });
 
-renderScore();
+if (!restoreState()) renderScore();
